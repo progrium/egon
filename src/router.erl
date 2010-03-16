@@ -5,7 +5,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
      terminate/2, code_change/3]).
  
--export([send/2, listen/3]).
+-export([send/2, listen/3, channel_size/2]).
 
 -define(SERVER, global:whereis_name(?MODULE)).
 
@@ -30,6 +30,10 @@ handle_call({send, Path, Json}, _From, State) ->
     send_to_channel(Path, Json),
     {reply, ok, State};
 
+handle_call({size, Path, Callback}, _From, State) ->
+    size_of_channel(Path, Callback),
+    {reply, ok, State};
+
 handle_call({logout, Pid}, _From, State) when is_pid(Pid)->
     io:format("stop listening on ~w\n", [Pid]),
     % remove_from_channel(Pid),
@@ -40,6 +44,9 @@ listen(Pid, Path, Response) when is_pid(Pid) ->
 
 send(Path, Json) ->
     gen_server:call(?SERVER, {send, Path, Json}).
+
+channel_size(Path, Callback) ->
+    gen_server:call(?SERVER, {size, Path, Callback}).
 
 % using a process dictionary instead of an ETS table
 % see: http://stackoverflow.com/questions/1483550/
@@ -53,6 +60,10 @@ get_or_spawn(Channel) ->
             Pid
     end.
 
+
+size_of_channel(Path, Callback) ->
+    ChannelPid = get_or_spawn(Path),
+    ChannelPid ! {size, Callback}.
 
 add_to_channel(Path, Pid, Response) ->
     ChannelPid = get_or_spawn(Path),
@@ -68,7 +79,7 @@ remove_from_channel(Path, Pid) ->
 
 channel(Path) ->
     process_flag(trap_exit, true),
-    io:format("New Channel for ~w~n", [Path]),
+    io:format("New Channel for ~s~n", [Path]),
     feeder([]).
 
 feeder(Connections) ->
@@ -79,6 +90,9 @@ feeder(Connections) ->
             NewConns = [{Pid, Response} | Connections];
         {send, Data} ->
             send_data(Connections, Data),
+            NewConns = Connections;
+        {size, Callback} ->
+            Callback(length(Connections)),
             NewConns = Connections;
         {'EXIT', Pid, _Why} ->
             io:format("User disconnected: ~w~n", [Pid]),

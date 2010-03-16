@@ -33,7 +33,9 @@ loop(Req, DocRoot) ->
         'POST' ->
             Json = mochijson:encode({struct, Req:parse_post()}),
             router:send(Path, Json),
-            Req:ok({"text/plain", "kthxbai"});
+            router:channel_size(Path, fun(Size) ->
+                Req:ok({"text/plain", "OK :: Sent to " ++ integer_to_list(Size) ++ " listeners\n"}) 
+            end);
         _ ->
             Req:respond({501, [], []})
     end.
